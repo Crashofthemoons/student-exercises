@@ -22,6 +22,9 @@ namespace nss
             SqliteConnection db = DatabaseInterface.Connection;
             DatabaseInterface.CheckCohortTable();
             DatabaseInterface.CheckInstructorsTable();
+            DatabaseInterface.CheckExercisesTable();
+            DatabaseInterface.CheckStudentsTable();
+            DatabaseInterface.CheckStudentExercisesTable();
 
             List<Instructor> instructors = db.Query<Instructor>(@"SELECT * FROM Instructor").ToList();
             instructors.ForEach(i => Console.WriteLine($"{i.FirstName} {i.LastName}"));
@@ -227,6 +230,68 @@ namespace nss
                 5. List the students working on each exercise, include the
                    student's cohort and the instructor who assigned the exercise
              */
+
+
+
+
+            Dictionary<int, Exercise> listStudentExercises = new Dictionary<int, Exercise>();
+
+            db.Query<Exercise, Student, Cohort, Instructor, StudentExercise, Exercise>(@"
+                SELECT
+                    e.Id,
+                    e.Name,
+                    e.Language,
+                    s.Id,
+                    s.FirstName,
+                    s.LastName,
+                    s.SlackHandle,
+                    c.Id,
+                    c.Name,
+                    i.Id,
+                    i.FirstName,
+                    i.LastName,
+                    i.SlackHandle,
+                    i.Specialty,
+                    se.Id,
+                    se.StudentId,
+                    se.ExerciseId,
+                    se.InstructorId
+                FROM Exercise e
+                JOIN StudentExercise se ON e.Id = se.ExerciseId
+                JOIN Student s ON s.Id = se.StudentId
+                JOIN Cohort c ON s.CohortId = c.Id
+                JOIN Instructor i ON i.Id = se.InstructorId
+            ", (exercise, student, cohort, instructor, studentExercise) =>
+            {
+                if (!listStudentExercises.ContainsKey(exercise.Id))
+                {
+                    listStudentExercises[exercise.Id] = exercise;
+                }
+                Cohort myCohort = cohort;
+                Student myStudent = student;
+                myStudent.Cohort = myCohort;
+                listStudentExercises[exercise.Id].AssignedStudents.Add(myStudent);
+                listStudentExercises[exercise.Id].AssignmentInstructor.Add(instructor);
+                return exercise;
+            });
+
+            foreach (KeyValuePair<int, Exercise> exercise in listStudentExercises)
+            {
+                List<string> studentsWithExercises = new List<string>();
+                exercise.Value.AssignedStudents.ForEach(s => studentsWithExercises.Add($"{s.FirstName} in {s.Cohort.Name}"));
+
+                List<string> instructorNames = new List<string>();
+                exercise.Value.AssignmentInstructor.ForEach(i => instructorNames.Add($"{i.FirstName}"));
+
+                StringBuilder output = new StringBuilder();
+                output.Append($"{exercise.Value.Name} ");
+                output.Append($"is being worked on by {String.Join(',', studentsWithExercises)} ");
+                output.Append($"assigned by {String.Join(',', instructorNames)}.");
+                Console.WriteLine(output);
+            }
+
+
+
         }
     }
 }
